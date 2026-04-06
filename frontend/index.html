@@ -358,7 +358,7 @@
         location: original.location || '',
         about: improved.about || original.about || '',
         experience: (original.experience || []).map(e => {
-          const imp = (improved.experience || []).find(ie => ie.title === e.title && ie.company === e.company);
+          const imp = (improved.experience || []).find(ie => ie.company === e.company);
           const dateParts = (e.date_range || '').split(/\s*[–\-]\s*/);
           return {
             title: e.title,
