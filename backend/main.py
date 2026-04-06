@@ -240,18 +240,22 @@ def _build_resume_doc(data: ResumeRequest) -> tuple:
     if data.about:
         heading("Profile")
         seg(data.about, ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
-    # Work Experience
+    # Work Experience — tab-separated columns: Title | Company | Dates
+    TAB_STOPS = {"tabStops": [
+        {"offset": {"magnitude": 200, "unit": "PT"}, "alignment": "START"},
+        {"offset": {"magnitude": 370, "unit": "PT"}, "alignment": "START"},
+    ]}
     if data.experience:
         heading("Work Experience")
+        # Header row
+        seg("Title\tCompany\tDates",
+            ts={"bold": True, "fontSize": {"magnitude": 10, "unit": "PT"}},
+            ps={**TAB_STOPS})
         for exp in data.experience:
             date_str = " – ".join(p for p in [exp.date_from, exp.date_to] if p)
-            seg(exp.title,
-                ts={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
-                ps={"spaceAbove": {"magnitude": 8, "unit": "PT"}})
-            subtitle = " · ".join(p for p in [exp.company, date_str] if p)
-            if subtitle:
-                seg(subtitle,
-                    ts={"fontSize": {"magnitude": 10, "unit": "PT"}, "foregroundColor": ORANGE})
+            seg(f"{exp.title}\t{exp.company}\t{date_str}",
+                ts={"fontSize": {"magnitude": 10, "unit": "PT"}},
+                ps={**TAB_STOPS, "spaceAbove": {"magnitude": 2, "unit": "PT"}})
             for bullet in (exp.improved_bullets or []):
                 if bullet:
                     seg("• " + bullet,
