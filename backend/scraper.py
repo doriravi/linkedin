@@ -394,51 +394,86 @@ def scrape_profile(url: str) -> dict:
 
             exp_lines = _parse_entries(_page_lines(), "Experience")
 
+            def _is_company_line(t: str) -> bool:
+                """Company lines contain · but are NOT date lines."""
+                return "·" in t and not _is_date_line(t)
+
+            def _is_location_line(t: str) -> bool:
+                return bool(
+                    re.search(r"district|area|region|metro", t, re.I)
+                    or t.lower() in {"israel", "remote", "united states", "united kingdom", "tel aviv"}
+                    or re.match(r"^[A-Za-z\s]+,\s*[A-Za-z\s]+$", t)
+                )
+
+            # Build a flat list of typed tokens from the raw lines
+            # Each token: (kind, value)  kind = title|company|date|location|desc
+            # Strategy: walk lines, classify each based on context and lookahead
+            #
+            # LinkedIn experience detail page structure per entry:
+            #   <Title>
+            #   <Company> · <EmploymentType>   OR   <Company>   (plain, no ·)
+            #   <DateFrom> - <DateTo> · <Duration>
+            #   [Location]
+            #   [Description lines...]
+            #
+            # We detect entry boundaries by: after we have title+company+date,
+            # the next company-line or (plain line followed by date-line) = new entry.
+
             experience = []
             i = 0
             while i < len(exp_lines):
                 line = exp_lines[i]
-                # Skip pure meta / short UI lines
-                if _is_meta_line(line) or line.lower() in EMPLOYMENT_TYPES:
+
+                # Skip bare date lines or company·type lines at top level
+                if _is_date_line(line) or _is_company_line(line):
                     i += 1
                     continue
-                # This line is a title
+
+                # ── This line is a job title ──────────────────────────────────
                 title = line
                 company = date_range = location = ""
                 description_parts = []
                 i += 1
-                while i < len(exp_lines):
+
+                # Next line: either "Company · Type" or plain company name
+                if i < len(exp_lines):
                     nxt = exp_lines[i]
-                    # Stop at next title-looking line that isn't meta
-                    if not _is_meta_line(nxt) and not company and nxt:
-                        # It's the company
+                    if _is_company_line(nxt):
                         company = nxt.split("·")[0].strip()
                         i += 1
-                    elif _is_date_line(nxt):
-                        if not date_range:
-                            date_range = nxt.split("·")[0].strip()
+                    elif not _is_date_line(nxt):
+                        # Plain company name (no employment type suffix)
+                        company = nxt
                         i += 1
-                    elif nxt.split("·")[0].strip().lower() in EMPLOYMENT_TYPES:
-                        i += 1
-                    elif company and not _is_meta_line(nxt) and not _is_date_line(nxt):
-                        # Could be location or description
-                        if not location and len(nxt) < 80 and (
-                            "," in nxt or nxt.lower() in {"israel", "remote", "united states", "united kingdom"}
-                            or re.search(r"district|area|region|metro", nxt, re.I)
-                        ):
-                            location = nxt
-                            i += 1
-                        elif title and company:
-                            # Check if next line looks like a new title (not meta, appears after blank / entry switch)
-                            # Heuristic: if we already have title+company+date, a non-meta line is description
-                            description_parts.append(nxt)
-                            i += 1
-                        else:
-                            break
-                    else:
-                        break
 
-                if title:
+                # Next line: date
+                if i < len(exp_lines) and _is_date_line(exp_lines[i]):
+                    date_range = exp_lines[i].split("·")[0].strip()
+                    i += 1
+
+                # Optional location
+                if i < len(exp_lines) and _is_location_line(exp_lines[i]) and not _is_date_line(exp_lines[i]):
+                    location = exp_lines[i]
+                    i += 1
+
+                # Remaining lines until next entry = description
+                while i < len(exp_lines):
+                    nxt = exp_lines[i]
+                    # Hard stop: date or company·type line = next entry metadata
+                    if _is_company_line(nxt) or _is_date_line(nxt):
+                        break
+                    # Lookahead: if the NEXT line is a date/company, current line is next entry's title
+                    lookahead1 = exp_lines[i + 1] if i + 1 < len(exp_lines) else ""
+                    lookahead2 = exp_lines[i + 2] if i + 2 < len(exp_lines) else ""
+                    if _is_date_line(lookahead1) or _is_company_line(lookahead1):
+                        break
+                    # Two-step lookahead: plain company (no ·) followed by date
+                    if not _is_date_line(lookahead1) and not _is_company_line(lookahead1) and _is_date_line(lookahead2):
+                        break
+                    description_parts.append(nxt)
+                    i += 1
+
+                if title and company:
                     experience.append({
                         "title": title,
                         "company": company,
