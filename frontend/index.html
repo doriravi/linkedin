@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn Profile Improver</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f3f2ef;
+      color: #1d2226;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #0a66c2;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.25rem; font-weight: 700; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+
+    /* Input card */
+    .input-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 28px 32px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.12);
+      margin-bottom: 28px;
+    }
+    .input-card h2 { font-size: 1.05rem; margin-bottom: 16px; color: #444; }
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1.5px solid #c0c0c0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .input-row input:focus { border-color: #0a66c2; }
+    .btn-analyze {
+      background: #0a66c2;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    .btn-analyze:hover { background: #004182; }
+    .btn-analyze:disabled { background: #a0b4c8; cursor: not-allowed; }
+
+    .btn-connect {
+      background: #fff;
+      color: #0a66c2;
+      border: 1.5px solid #0a66c2;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-connect:hover { background: #e8f1fb; }
+    .btn-connect:disabled { border-color: #a0b4c8; color: #a0b4c8; cursor: not-allowed; }
+
+    .btn-pdf {
+      background: #0a66c2;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+      display: none;
+    }
+    .btn-pdf:hover { background: #004182; }
+    .btn-pdf:disabled { background: #a0b4c8; cursor: not-allowed; }
+
+    .btn-create-resume {
+      background: #0a66c2;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    .btn-create-resume:hover { background: #004182; }
+    .btn-create-resume:disabled { background: #a0b4c8; cursor: not-allowed; }
+
+
+    .connect-status {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      display: none;
+    }
+    .connect-status.success { background: #eafaf1; color: #1e8449; border: 1px solid #a9dfbf; }
+    .connect-status.error   { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6c6; }
+
+    /* Error */
+    .error-box {
+      background: #fff0f0;
+      border: 1px solid #f5c6c6;
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #c0392b;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 48px 0;
+      display: none;
+    }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid #dce6f0;
+      border-top-color: #0a66c2;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading p { color: #555; font-size: 0.95rem; }
+
+    /* Results */
+    #results { display: none; }
+
+    .profile-name {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      color: #0a66c2;
+    }
+
+    /* Section cards */
+    .section-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.10);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .section-header {
+      background: #f8fafc;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #0a66c2;
+    }
+    .section-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    .col {
+      padding: 18px 20px;
+    }
+    .col:first-child {
+      border-right: 1px solid #e8e8e8;
+    }
+    .col-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .col-content {
+      font-size: 0.92rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .col.improved .col-content { color: #1d4e1a; }
+    .col.original .col-content { color: #444; }
+
+    /* Skills */
+    .skills-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .skill-tag {
+      background: #e8f1fb;
+      color: #0a66c2;
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .skill-tag.original { background: #f0f0f0; color: #555; }
+
+    /* Experience */
+    .exp-item { margin-bottom: 16px; }
+    .exp-item:last-child { margin-bottom: 0; }
+    .exp-role { font-weight: 600; font-size: 0.9rem; }
+    .exp-company { font-size: 0.83rem; color: #888; margin-bottom: 6px; }
+    .exp-desc { font-size: 0.88rem; line-height: 1.6; color: #444; white-space: pre-wrap; }
+    .exp-bullets { list-style: none; padding: 0; }
+    .exp-bullets li {
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: #1d4e1a;
+      padding-left: 16px;
+      position: relative;
+      margin-bottom: 4px;
+    }
+    .exp-bullets li::before {
+      content: "▸";
+      position: absolute;
+      left: 0;
+      color: #0a66c2;
+    }
+
+    /* Copy button */
+    .btn-copy {
+      background: none;
+      border: 1.5px solid #0a66c2;
+      color: #0a66c2;
+      border-radius: 5px;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-copy:hover { background: #0a66c2; color: #fff; }
+    .btn-copy.copied { border-color: #27ae60; color: #27ae60; }
+    .btn-copy.copied:hover { background: #27ae60; color: #fff; }
+
+    @media (max-width: 680px) {
+      .section-body { grid-template-columns: 1fr; }
+      .col:first-child { border-right: none; border-bottom: 1px solid #e8e8e8; }
+      .input-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+  <h1>LinkedIn Profile Improver</h1>
+</header>
+
+<main>
+  <div class="input-card">
+    <h2>Paste a LinkedIn profile URL to get AI-powered improvements</h2>
+    <div class="input-row">
+      <input id="urlInput" type="url" placeholder="https://www.linkedin.com/in/username/" />
+      <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">Analyze Profile</button>
+      <button class="btn-connect" id="connectBtn" onclick="connect()">Connect</button>
+      <button class="btn-create-resume" id="createResumeBtn" onclick="downloadResume()">&#128196; Create Resume</button>
+    </div>
+    <div id="connectStatus" class="connect-status"></div>
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-size:.88rem;color:#0a66c2;font-weight:600;user-select:none">+ Paste your full profile / CV for better results (optional)</summary>
+      <textarea id="extraContext" placeholder="Paste your resume, CV, or any additional profile information here. This will be used as the authoritative source for generating improvements." style="width:100%;margin-top:12px;padding:10px 14px;border:1.5px solid #c0c0c0;border-radius:6px;font-size:.88rem;font-family:inherit;resize:vertical;min-height:160px;outline:none;line-height:1.6"></textarea>
+    </details>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p id="loadingMsg">Scraping profile and generating improvements…</p>
+    <p style="color:#aaa;font-size:.82rem;margin-top:6px">This may take 30–60 seconds</p>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<script>
+  let _lastResult = null;
+
+  async function downloadResume() {
+    const btn = document.getElementById('createResumeBtn');
+
+    // If no analysis yet, run it first
+    if (!_lastResult) {
+      let url = document.getElementById('urlInput').value.trim();
+      if (url && !url.startsWith('http')) url = 'https://' + url;
+      if (!url) { showError('Please enter a LinkedIn profile URL.'); return; }
+      if (!url.includes('linkedin.com/in/')) { showError('Please enter a valid LinkedIn profile URL (e.g. https://www.linkedin.com/in/username/).'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Analyzing profile…';
+      document.getElementById('errorBox').style.display = 'none';
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('loadingMsg').textContent = 'Scraping profile and generating improvements…';
+      document.getElementById('analyzeBtn').disabled = true;
+
+      try {
+        const extraContext = document.getElementById('extraContext').value.trim();
+        const res = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, extra_context: extraContext })
+        });
+        const data = await res.json();
+        if (!res.ok) { showError(data.detail || 'An error occurred.'); return; }
+        _lastResult = data;
+        renderResults(data);
+      } catch (e) {
+        showError('Network error. Make sure the server is running.');
+        return;
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('analyzeBtn').disabled = false;
+        btn.disabled = false;
+        btn.innerHTML = '&#128196; Create Resume';
+      }
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Creating Google Doc…';
+    try {
+      const { original, improved } = _lastResult;
+      const payload = {
+        name: original.name || '',
+        headline: improved.headline || original.headline || '',
+        location: original.location || '',
+        about: improved.about || original.about || '',
+        experience: (original.experience || []).map(e => {
+          const imp = (improved.experience || []).find(ie => ie.title === e.title && ie.company === e.company);
+          const dateParts = (e.date_range || '').split(/\s*[–\-]\s*/);
+          return {
+            title: e.title,
+            company: e.company,
+            date_from: (dateParts[0] || '').trim(),
+            date_to:   (dateParts[1] || '').trim(),
+            location: e.location || '',
+            improved_bullets: imp ? (imp.improved_bullets || []) : (e.description ? [e.description] : [])
+          };
+        }),
+        education: (original.education || []),
+        certifications: (original.certifications || []),
+        skills: (improved.skills || original.skills || []),
+        languages: (original.languages || []),
+      };
+      const res = await fetch('/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.status === 401 && data.auth_required) {
+        // Need Google auth — open login page, it will redirect back
+        window.location.href = data.auth_url;
+        return;
+      }
+      if (!res.ok) {
+        alert(data.detail || 'Failed to create Google Doc.');
+        return;
+      }
+      window.open(data.doc_url, '_blank');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '&#128196; Create Resume';
+    }
+  }
+
+  async function connect() {
+    let url = document.getElementById('urlInput').value.trim();
+    if (url && !url.startsWith('http')) url = 'https://' + url;
+    const btn = document.getElementById('connectBtn');
+    const statusEl = document.getElementById('connectStatus');
+
+    statusEl.style.display = 'none';
+    statusEl.className = 'connect-status';
+
+    if (!url) { showConnectStatus('Please enter a LinkedIn profile URL.', false); return; }
+    if (!url.includes('linkedin.com/in/')) { showConnectStatus('Please enter a valid LinkedIn profile URL.', false); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+
+    try {
+      const res = await fetch('/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showConnectStatus(data.detail || 'An error occurred.', false);
+      } else {
+        showConnectStatus(data.status, true);
+      }
+    } catch (e) {
+      showConnectStatus('Network error. Make sure the server is running.', false);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Connect';
+    }
+  }
+
+  function showConnectStatus(msg, success) {
+    const el = document.getElementById('connectStatus');
+    el.textContent = msg;
+    el.className = 'connect-status ' + (success ? 'success' : 'error');
+    el.style.display = 'block';
+  }
+
+  async function analyze() {
+    let url = document.getElementById('urlInput').value.trim();
+    // Auto-add https:// if missing
+    if (url && !url.startsWith('http')) url = 'https://' + url;
+    const btn = document.getElementById('analyzeBtn');
+    const errorBox = document.getElementById('errorBox');
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+
+    errorBox.style.display = 'none';
+    results.style.display = 'none';
+    results.innerHTML = '';
+    if (!url) { showError('Please enter a LinkedIn profile URL.'); return; }
+    if (!url.includes('linkedin.com/in/')) { showError('Please enter a valid LinkedIn profile URL (e.g. https://www.linkedin.com/in/username/).'); return; }
+
+    btn.disabled = true;
+    loading.style.display = 'block';
+
+    try {
+      const extraContext = document.getElementById('extraContext').value.trim();
+      const res = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, extra_context: extraContext })
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || 'An error occurred.'); return; }
+      _lastResult = data;
+      renderResults(data);
+    } catch (e) {
+      showError('Network error. Make sure the server is running.');
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('errorBox');
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
+
+  function copy(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  function renderResults({ original, improved }) {
+    const results = document.getElementById('results');
+    results.style.display = 'block';
+
+    let html = '';
+    const nameLine = [original.name, original.location].filter(Boolean).join(' · ');
+    if (nameLine) html += `<div class="profile-name">${esc(nameLine)}</div>`;
+
+    // ── Headline ─────────────────────────────────────────────────────────────
+    html += section('Headline',
+      `<div class="col original"><div class="col-label">Original</div><div class="col-content">${esc(original.headline || '—')}</div></div>`,
+      `<div class="col improved"><div class="col-label">Improved</div><div class="col-content">${esc(improved.headline || '')}</div></div>`,
+      improved.headline
+    );
+
+    // ── About ─────────────────────────────────────────────────────────────────
+    html += section('About / Summary',
+      `<div class="col original"><div class="col-label">Original</div><div class="col-content">${esc(original.about || '—')}</div></div>`,
+      `<div class="col improved"><div class="col-label">Improved</div><div class="col-content">${esc(improved.about || '')}</div></div>`,
+      improved.about
+    );
+
+    // ── Experience ────────────────────────────────────────────────────────────
+    const origExpHtml = (original.experience || []).map(e => `
+      <div class="exp-item">
+        <div class="exp-role">${esc(e.title)}</div>
+        <div class="exp-company">${esc(e.company)}${e.date_range ? ' · ' + esc(e.date_range) : ''}${e.location ? ' · ' + esc(e.location) : ''}</div>
+        <div class="exp-desc">${esc(e.description || '')}</div>
+      </div>`).join('') || '<em style="color:#aaa">No experience data found</em>';
+
+    const impExpHtml = (improved.experience || []).map(e =>
+      `<div class="exp-item"><div class="exp-role">${esc(e.title)}</div><div class="exp-company">${esc(e.company)}</div><ul class="exp-bullets">${(e.improved_bullets || []).map(b => `<li>${esc(b)}</li>`).join('')}</ul></div>`
+    ).join('') || '';
+
+    const impExpText = (improved.experience || []).map(e =>
+      `${e.title} at ${e.company}\n${(e.improved_bullets || []).map(b => '• ' + b).join('\n')}`
+    ).join('\n\n');
+
+    html += section('Experience',
+      `<div class="col original"><div class="col-label">Original</div>${origExpHtml}</div>`,
+      `<div class="col improved"><div class="col-label">Improved</div>${impExpHtml}</div>`,
+      impExpText
+    );
+
+    // ── Education ────────────────────────────────────────────────────────────
+    if ((original.education || []).length) {
+      const eduHtml = original.education.map(e =>
+        `<div class="exp-item"><div class="exp-role">${esc(e.school)}</div><div class="exp-company">${esc([e.degree, e.field].filter(Boolean).join(', '))}${e.years ? ' · ' + esc(e.years) : ''}</div></div>`
+      ).join('');
+      html += section('Education',
+        `<div class="col original" style="grid-column:span 2"><div class="col-label">Education</div>${eduHtml}</div>`,
+        '', ''
+      );
+    }
+
+    // ── Certifications ────────────────────────────────────────────────────────
+    if ((original.certifications || []).length) {
+      const certHtml = original.certifications.map(c =>
+        `<div class="exp-item"><div class="exp-role">${esc(c.name)}</div><div class="exp-company">${esc(c.issuer)}${c.date ? ' · ' + esc(c.date) : ''}</div></div>`
+      ).join('');
+      html += section('Certifications',
+        `<div class="col original" style="grid-column:span 2"><div class="col-label">Certifications</div>${certHtml}</div>`,
+        '', ''
+      );
+    }
+
+    // ── Skills ────────────────────────────────────────────────────────────────
+    const origSkillsHtml = (original.skills || []).map(s => `<span class="skill-tag original">${esc(s)}</span>`).join('') || '<em style="color:#aaa">—</em>';
+    const impSkillsHtml = (improved.skills || []).map(s => `<span class="skill-tag">${esc(s)}</span>`).join('') || '';
+    const impSkillsText = (improved.skills || []).join(', ');
+
+    html += section('Skills & Keywords',
+      `<div class="col original"><div class="col-label">Original</div><div class="skills-list">${origSkillsHtml}</div></div>`,
+      `<div class="col improved"><div class="col-label">Improved</div><div class="skills-list">${impSkillsHtml}</div></div>`,
+      impSkillsText
+    );
+
+    // ── Languages ────────────────────────────────────────────────────────────
+    if ((original.languages || []).length) {
+      const langHtml = original.languages.map(l =>
+        `<span class="skill-tag original">${esc(l.language)}${l.proficiency ? ' (' + esc(l.proficiency) + ')' : ''}</span>`
+      ).join('');
+      html += section('Languages',
+        `<div class="col original" style="grid-column:span 2"><div class="skills-list">${langHtml}</div></div>`,
+        '', ''
+      );
+    }
+
+    results.innerHTML = html;
+  }
+
+  function section(title, leftHtml, rightHtml, copyText) {
+    const copyBtn = copyText
+      ? `<button class="btn-copy" onclick="copy(${JSON.stringify(copyText)}, this)">Copy</button>`
+      : '';
+    return `
+      <div class="section-card">
+        <div class="section-header">
+          <span class="section-title">${title}</span>
+          ${copyBtn}
+        </div>
+        <div class="section-body">${leftHtml}${rightHtml}</div>
+      </div>`;
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // Allow Enter key to trigger analyze
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') analyze();
+    });
+  });
+</script>
+</body>
+</html>
