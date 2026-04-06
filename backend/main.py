@@ -34,7 +34,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 TOKEN_FILE = Path(__file__).parent.parent / "google_token.json"
 CREDS_FILE = Path(__file__).parent.parent / "google_credentials.json"
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/documents"]
 REDIRECT_URI = "http://localhost:8000/auth/callback"
 
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
@@ -348,26 +348,144 @@ def _build_resume_html(data: ResumeRequest) -> str:
 </html>"""
 
 
+def _build_resume_requests(data: ResumeRequest) -> list:
+    """Build a list of Google Docs API batchUpdate requests for the resume."""
+    requests = []
+    idx = 1  # current insert index (1 = start of doc)
+
+    def insert(text: str, style: dict = None) -> None:
+        nonlocal idx
+        requests.append({"insertText": {"location": {"index": idx}, "text": text}})
+        end = idx + len(text)
+        if style:
+            requests.append({"updateTextStyle": {
+                "range": {"startIndex": idx, "endIndex": end},
+                "textStyle": style,
+                "fields": ",".join(style.keys()),
+            }})
+        idx = end
+
+    def paragraph(text: str, style: dict = None, para_style: dict = None) -> None:
+        nonlocal idx
+        insert(text + "\n", style)
+        if para_style:
+            requests.append({"updateParagraphStyle": {
+                "range": {"startIndex": idx - len(text) - 1, "endIndex": idx},
+                "paragraphStyle": para_style,
+                "fields": ",".join(para_style.keys()),
+            }})
+
+    def section_heading(title: str) -> None:
+        paragraph(title.upper(), style={
+            "bold": True,
+            "fontSize": {"magnitude": 11, "unit": "PT"},
+            "foregroundColor": {"color": {"rgbColor": {"red": 0.91, "green": 0.47, "blue": 0.13}}},
+        }, para_style={"spaceAbove": {"magnitude": 12, "unit": "PT"},
+                       "spaceBelow": {"magnitude": 4, "unit": "PT"}})
+
+    # ── Name ─────────────────────────────────────────────────────────────────
+    paragraph(data.name or "Resume", style={
+        "bold": True,
+        "fontSize": {"magnitude": 20, "unit": "PT"},
+    }, para_style={"alignment": "CENTER"})
+
+    # ── Headline ─────────────────────────────────────────────────────────────
+    if data.headline:
+        paragraph(data.headline, style={
+            "fontSize": {"magnitude": 11, "unit": "PT"},
+            "foregroundColor": {"color": {"rgbColor": {"red": 0.4, "green": 0.4, "blue": 0.4}}},
+        }, para_style={"alignment": "CENTER"})
+
+    # ── Location ─────────────────────────────────────────────────────────────
+    if data.location:
+        paragraph(data.location, style={
+            "fontSize": {"magnitude": 10, "unit": "PT"},
+            "foregroundColor": {"color": {"rgbColor": {"red": 0.5, "green": 0.5, "blue": 0.5}}},
+        }, para_style={"alignment": "CENTER"})
+
+    # ── About ─────────────────────────────────────────────────────────────────
+    if data.about:
+        section_heading("Profile")
+        paragraph(data.about, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+
+    # ── Work Experience ───────────────────────────────────────────────────────
+    if data.experience:
+        section_heading("Work Experience")
+        for exp in data.experience:
+            date_str = " – ".join(p for p in [exp.date_from, exp.date_to] if p)
+            paragraph(exp.title, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                      para_style={"spaceAbove": {"magnitude": 6, "unit": "PT"}})
+            subtitle = " · ".join(p for p in [exp.company, date_str] if p)
+            if subtitle:
+                paragraph(subtitle, style={
+                    "fontSize": {"magnitude": 10, "unit": "PT"},
+                    "foregroundColor": {"color": {"rgbColor": {"red": 0.91, "green": 0.47, "blue": 0.13}}},
+                })
+            for bullet in (exp.improved_bullets or []):
+                if bullet:
+                    paragraph("• " + bullet, style={"fontSize": {"magnitude": 10, "unit": "PT"}},
+                              para_style={"indentFirstLine": {"magnitude": 0, "unit": "PT"},
+                                          "indentStart": {"magnitude": 14, "unit": "PT"}})
+
+    # ── Education ─────────────────────────────────────────────────────────────
+    if data.education:
+        section_heading("Education")
+        for edu in data.education:
+            paragraph(edu.school, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                      para_style={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
+            degree = ", ".join(p for p in [edu.degree, edu.field] if p)
+            sub = " · ".join(p for p in [degree, edu.years] if p)
+            if sub:
+                paragraph(sub, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+
+    # ── Certifications ────────────────────────────────────────────────────────
+    if data.certifications:
+        section_heading("Certifications")
+        for cert in data.certifications:
+            paragraph(cert.name, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                      para_style={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
+            sub = " · ".join(p for p in [cert.issuer, cert.date] if p)
+            if sub:
+                paragraph(sub, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+
+    # ── Skills ────────────────────────────────────────────────────────────────
+    if data.skills:
+        section_heading("Skills")
+        paragraph(", ".join(data.skills), style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+
+    # ── Languages ─────────────────────────────────────────────────────────────
+    if data.languages:
+        section_heading("Languages")
+        for lang in data.languages:
+            text = lang.language + (f" ({lang.proficiency})" if lang.proficiency else "")
+            paragraph("• " + text, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+
+    return requests
+
+
 @app.post("/resume")
 async def create_resume(request: ResumeRequest):
     creds = _get_credentials()
     if not creds:
         return JSONResponse(status_code=401, content={"auth_required": True, "auth_url": "/auth/login"})
 
-    html = _build_resume_html(request)
     filename = f"{request.name or 'Resume'} — Resume"
 
-    drive = build("drive", "v3", credentials=creds)
+    # Create empty Google Doc
+    docs = build("docs", "v1", credentials=creds)
+    doc = docs.documents().create(body={"title": filename}).execute()
+    doc_id = doc["documentId"]
 
-    file_meta = {"name": filename, "mimeType": "application/vnd.google-apps.document"}
-    media = MediaIoBaseUpload(
-        io.BytesIO(html.encode("utf-8")),
-        mimetype="text/html",
-        resumable=False,
-    )
-    result = drive.files().create(body=file_meta, media_body=media, fields="id,webViewLink").execute()
+    # Write content via batchUpdate
+    reqs = _build_resume_requests(request)
+    if reqs:
+        docs.documents().batchUpdate(
+            documentId=doc_id,
+            body={"requests": reqs},
+        ).execute()
 
-    return {"doc_url": result["webViewLink"]}
+    doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
+    return {"doc_url": doc_url}
 
 
 @app.get("/health")
