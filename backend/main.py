@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import io
 import json
 import os
 from pathlib import Path
@@ -13,7 +12,6 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 from pydantic import BaseModel
 
 load_dotenv()
@@ -198,269 +196,121 @@ async def connect_to_profile(request: ConnectRequest):
     return {"status": status}
 
 
-def _build_resume_html(data: ResumeRequest) -> str:
-    """Build a two-column styled resume (dark sidebar + content) as HTML."""
-    DARK   = "#1C1C1E"
-    ORANGE = "#E87722"
-    WHITE  = "#FFFFFF"
-    LIGHT  = "#F5F5F5"
-    GREY   = "#666666"
 
-    def esc(s: str) -> str:
-        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    # ── Sidebar helpers ────────────────────────────────────────────────────────
-    def sb_section(title: str) -> str:
-        return (f"<tr><td style='padding:14px 20px 4px'>"
-                f"<div style='color:{ORANGE};font-size:11px;font-weight:bold;"
-                f"text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid {ORANGE};"
-                f"padding-bottom:4px;margin-bottom:8px'>{title}</div></td></tr>")
-
-    def sb_item(text: str, sub: str = "") -> str:
-        sub_html = f"<div style='color:#aaa;font-size:9px;margin-top:1px'>{esc(sub)}</div>" if sub else ""
-        return (f"<tr><td style='padding:2px 20px'>"
-                f"<div style='color:{WHITE};font-size:10px;line-height:1.6'>"
-                f"&#9654; {esc(text)}{sub_html}</div></td></tr>")
-
-    # ── Main content helpers ───────────────────────────────────────────────────
-    def mc_section(title: str) -> str:
-        return (f"<tr><td style='padding:14px 24px 4px'>"
-                f"<div style='font-size:14px;font-weight:bold;color:{DARK};"
-                f"text-transform:uppercase;letter-spacing:1px;"
-                f"border-bottom:2px solid {ORANGE};padding-bottom:4px'>{esc(title)}</div>"
-                f"</td></tr>")
-
-    def mc_entry(title: str, subtitle: str, bullets: list) -> str:
-        bhtml = ""
-        if bullets:
-            items = "".join(f"<li style='font-size:10px;color:#333;line-height:1.6;margin-bottom:2px'>{esc(b)}</li>" for b in bullets)
-            bhtml = f"<ul style='margin:4px 0 0 0;padding-left:16px'>{items}</ul>"
-        return (f"<tr><td style='padding:6px 24px 8px'>"
-                f"<div style='font-size:11px;font-weight:bold;color:{DARK}'>{esc(title)}</div>"
-                f"<div style='font-size:10px;color:{ORANGE};margin:1px 0'>{esc(subtitle)}</div>"
-                f"{bhtml}</td></tr>")
-
-    # ── Build sidebar ─────────────────────────────────────────────────────────
-    name_parts = data.name.split(" ", 1) if data.name else ["", ""]
-    first = name_parts[0]
-    last  = name_parts[1] if len(name_parts) > 1 else ""
-
-    sidebar_rows = [
-        # Avatar placeholder
-        f"<tr><td style='padding:30px 20px 10px;text-align:center'>"
-        f"<div style='width:80px;height:80px;border-radius:50%;background:{ORANGE};"
-        f"margin:0 auto;display:inline-block;line-height:80px;color:{WHITE};"
-        f"font-size:28px;font-weight:bold;text-align:center'>"
-        f"{esc(first[:1])}{esc(last[:1])}</div></td></tr>",
-        # Name
-        f"<tr><td style='padding:8px 20px 2px;text-align:center'>"
-        f"<div style='color:{WHITE};font-size:20px;font-weight:bold'>"
-        f"<span style='color:{WHITE}'>{esc(first)} </span>"
-        f"<span style='color:{ORANGE}'>{esc(last)}</span></div></td></tr>",
-        # Headline
-        f"<tr><td style='padding:2px 20px 16px;text-align:center'>"
-        f"<div style='color:#bbb;font-size:10px;text-transform:uppercase;letter-spacing:1px'>"
-        f"{esc(data.headline)}</div></td></tr>",
-    ]
-
-    # Contact
-    contact_items = []
-    if data.location:
-        contact_items.append((data.location, ""))
-    sidebar_rows.append(sb_section("Contact"))
-    for item, sub in contact_items:
-        sidebar_rows.append(sb_item(item, sub))
-
-    # Skills
-    if data.skills:
-        sidebar_rows.append(sb_section("Skills"))
-        for skill in data.skills[:15]:
-            sidebar_rows.append(sb_item(skill))
-
-    # Languages
-    if data.languages:
-        sidebar_rows.append(sb_section("Languages"))
-        for lang in data.languages:
-            sidebar_rows.append(sb_item(lang.language, lang.proficiency))
-
-    # ── Build main content ────────────────────────────────────────────────────
-    main_rows = []
-
-    if data.about:
-        main_rows.append(mc_section("Profile"))
-        for para in (data.about.split("\n\n") or [data.about])[:2]:
-            if para.strip():
-                main_rows.append(
-                    f"<tr><td style='padding:4px 24px 8px'>"
-                    f"<p style='font-size:10px;color:#333;line-height:1.7;margin:0'>{esc(para.strip())}</p>"
-                    f"</td></tr>"
-                )
-
-    if data.education:
-        main_rows.append(mc_section("Education"))
-        for edu in data.education:
-            degree = ", ".join(p for p in [edu.degree, edu.field] if p)
-            subtitle = " · ".join(p for p in [edu.years] if p)
-            main_rows.append(mc_entry(edu.school, degree or subtitle, [subtitle] if degree and subtitle else []))
-
-    if data.experience:
-        main_rows.append(mc_section("Work Experience"))
-        for exp in data.experience:
-            date_str = " – ".join(p for p in [exp.date_from, exp.date_to] if p)
-            subtitle = " · ".join(p for p in [exp.company, date_str] if p)
-            bullets = [b for b in (exp.improved_bullets or []) if b]
-            main_rows.append(mc_entry(exp.title, subtitle, bullets))
-
-    if data.certifications:
-        main_rows.append(mc_section("Certifications"))
-        for cert in data.certifications:
-            subtitle = " · ".join(p for p in [cert.issuer, cert.date] if p)
-            main_rows.append(mc_entry(cert.name, subtitle, []))
-
-    # ── Assemble two-column table ─────────────────────────────────────────────
-    sidebar_html  = "\n".join(sidebar_rows)
-    main_html     = "\n".join(main_rows)
-
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#e0e0e0">
-<table width="780" cellpadding="0" cellspacing="0"
-       style="margin:20px auto;border-collapse:collapse;box-shadow:0 4px 20px rgba(0,0,0,.3)">
-  <tr>
-    <!-- Sidebar -->
-    <td width="240" valign="top" style="background:{DARK};vertical-align:top">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        {sidebar_html}
-        <tr><td style="padding:20px">&nbsp;</td></tr>
-      </table>
-    </td>
-    <!-- Main -->
-    <td width="540" valign="top" style="background:{WHITE};vertical-align:top">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        {main_html}
-        <tr><td style="padding:20px">&nbsp;</td></tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>"""
+def _utf16_len(s: str) -> int:
+    """Google Docs API uses UTF-16 code unit offsets."""
+    return len(s.encode("utf-16-le")) // 2
 
 
-def _build_resume_requests(data: ResumeRequest) -> list:
-    """Build a list of Google Docs API batchUpdate requests for the resume."""
-    requests = []
-    idx = 1  # current insert index (1 = start of doc)
+def _build_resume_doc(data: ResumeRequest) -> tuple:
+    """
+    Returns (full_text, formatting_requests).
+    We insert all text in one shot, then apply formatting in a second batchUpdate.
+    This avoids index drift caused by mixing insertText + style requests.
+    """
+    # Each segment: (text, text_style, para_style)
+    segments = []
 
-    def insert(text: str, style: dict = None) -> None:
-        nonlocal idx
-        requests.append({"insertText": {"location": {"index": idx}, "text": text}})
-        end = idx + len(text)
-        if style:
-            requests.append({"updateTextStyle": {
-                "range": {"startIndex": idx, "endIndex": end},
-                "textStyle": style,
-                "fields": ",".join(style.keys()),
-            }})
-        idx = end
+    ORANGE = {"color": {"rgbColor": {"red": 0.91, "green": 0.47, "blue": 0.13}}}
+    GREY   = {"color": {"rgbColor": {"red": 0.5,  "green": 0.5,  "blue": 0.5}}}
 
-    def paragraph(text: str, style: dict = None, para_style: dict = None) -> None:
-        nonlocal idx
-        insert(text + "\n", style)
-        if para_style:
-            requests.append({"updateParagraphStyle": {
-                "range": {"startIndex": idx - len(text) - 1, "endIndex": idx},
-                "paragraphStyle": para_style,
-                "fields": ",".join(para_style.keys()),
-            }})
+    def seg(text, ts=None, ps=None):
+        segments.append((text + "\n", ts or {}, ps or {}))
 
-    def section_heading(title: str) -> None:
-        paragraph(title.upper(), style={
-            "bold": True,
-            "fontSize": {"magnitude": 11, "unit": "PT"},
-            "foregroundColor": {"color": {"rgbColor": {"red": 0.91, "green": 0.47, "blue": 0.13}}},
-        }, para_style={"spaceAbove": {"magnitude": 12, "unit": "PT"},
-                       "spaceBelow": {"magnitude": 4, "unit": "PT"}})
+    def heading(title):
+        seg(title.upper(),
+            ts={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}, "foregroundColor": ORANGE},
+            ps={"spaceAbove": {"magnitude": 12, "unit": "PT"}, "spaceBelow": {"magnitude": 4, "unit": "PT"}})
 
-    # ── Name ─────────────────────────────────────────────────────────────────
-    paragraph(data.name or "Resume", style={
-        "bold": True,
-        "fontSize": {"magnitude": 20, "unit": "PT"},
-    }, para_style={"alignment": "CENTER"})
-
-    # ── Headline ─────────────────────────────────────────────────────────────
+    # Name
+    seg(data.name or "Resume",
+        ts={"bold": True, "fontSize": {"magnitude": 20, "unit": "PT"}},
+        ps={"alignment": "CENTER"})
+    # Headline
     if data.headline:
-        paragraph(data.headline, style={
-            "fontSize": {"magnitude": 11, "unit": "PT"},
-            "foregroundColor": {"color": {"rgbColor": {"red": 0.4, "green": 0.4, "blue": 0.4}}},
-        }, para_style={"alignment": "CENTER"})
-
-    # ── Location ─────────────────────────────────────────────────────────────
+        seg(data.headline,
+            ts={"fontSize": {"magnitude": 11, "unit": "PT"}, "foregroundColor": GREY},
+            ps={"alignment": "CENTER"})
+    # Location
     if data.location:
-        paragraph(data.location, style={
-            "fontSize": {"magnitude": 10, "unit": "PT"},
-            "foregroundColor": {"color": {"rgbColor": {"red": 0.5, "green": 0.5, "blue": 0.5}}},
-        }, para_style={"alignment": "CENTER"})
-
-    # ── About ─────────────────────────────────────────────────────────────────
+        seg(data.location,
+            ts={"fontSize": {"magnitude": 10, "unit": "PT"}, "foregroundColor": GREY},
+            ps={"alignment": "CENTER"})
+    # About
     if data.about:
-        section_heading("Profile")
-        paragraph(data.about, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
-
-    # ── Work Experience ───────────────────────────────────────────────────────
+        heading("Profile")
+        seg(data.about, ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
+    # Work Experience
     if data.experience:
-        section_heading("Work Experience")
+        heading("Work Experience")
         for exp in data.experience:
             date_str = " – ".join(p for p in [exp.date_from, exp.date_to] if p)
-            paragraph(exp.title, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
-                      para_style={"spaceAbove": {"magnitude": 6, "unit": "PT"}})
+            seg(exp.title,
+                ts={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                ps={"spaceAbove": {"magnitude": 8, "unit": "PT"}})
             subtitle = " · ".join(p for p in [exp.company, date_str] if p)
             if subtitle:
-                paragraph(subtitle, style={
-                    "fontSize": {"magnitude": 10, "unit": "PT"},
-                    "foregroundColor": {"color": {"rgbColor": {"red": 0.91, "green": 0.47, "blue": 0.13}}},
-                })
+                seg(subtitle,
+                    ts={"fontSize": {"magnitude": 10, "unit": "PT"}, "foregroundColor": ORANGE})
             for bullet in (exp.improved_bullets or []):
                 if bullet:
-                    paragraph("• " + bullet, style={"fontSize": {"magnitude": 10, "unit": "PT"}},
-                              para_style={"indentFirstLine": {"magnitude": 0, "unit": "PT"},
-                                          "indentStart": {"magnitude": 14, "unit": "PT"}})
-
-    # ── Education ─────────────────────────────────────────────────────────────
+                    seg("• " + bullet,
+                        ts={"fontSize": {"magnitude": 10, "unit": "PT"}},
+                        ps={"indentStart": {"magnitude": 14, "unit": "PT"}})
+    # Education
     if data.education:
-        section_heading("Education")
+        heading("Education")
         for edu in data.education:
-            paragraph(edu.school, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
-                      para_style={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
+            seg(edu.school,
+                ts={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                ps={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
             degree = ", ".join(p for p in [edu.degree, edu.field] if p)
             sub = " · ".join(p for p in [degree, edu.years] if p)
             if sub:
-                paragraph(sub, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
-
-    # ── Certifications ────────────────────────────────────────────────────────
+                seg(sub, ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
+    # Certifications
     if data.certifications:
-        section_heading("Certifications")
+        heading("Certifications")
         for cert in data.certifications:
-            paragraph(cert.name, style={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
-                      para_style={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
+            seg(cert.name,
+                ts={"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
+                ps={"spaceAbove": {"magnitude": 4, "unit": "PT"}})
             sub = " · ".join(p for p in [cert.issuer, cert.date] if p)
             if sub:
-                paragraph(sub, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
-
-    # ── Skills ────────────────────────────────────────────────────────────────
+                seg(sub, ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
+    # Skills
     if data.skills:
-        section_heading("Skills")
-        paragraph(", ".join(data.skills), style={"fontSize": {"magnitude": 10, "unit": "PT"}})
-
-    # ── Languages ─────────────────────────────────────────────────────────────
+        heading("Skills")
+        seg(", ".join(data.skills), ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
+    # Languages
     if data.languages:
-        section_heading("Languages")
+        heading("Languages")
         for lang in data.languages:
             text = lang.language + (f" ({lang.proficiency})" if lang.proficiency else "")
-            paragraph("• " + text, style={"fontSize": {"magnitude": 10, "unit": "PT"}})
+            seg("• " + text, ts={"fontSize": {"magnitude": 10, "unit": "PT"}})
 
-    return requests
+    # ── Build full text and formatting requests ───────────────────────────────
+    full_text = "".join(t for t, _, _ in segments)
+
+    fmt_requests = []
+    idx = 1  # Google Docs body starts at index 1
+    for (text, ts, ps) in segments:
+        end = idx + _utf16_len(text)
+        if ts:
+            fmt_requests.append({"updateTextStyle": {
+                "range": {"startIndex": idx, "endIndex": end},
+                "textStyle": ts,
+                "fields": ",".join(ts.keys()),
+            }})
+        if ps:
+            fmt_requests.append({"updateParagraphStyle": {
+                "range": {"startIndex": idx, "endIndex": end},
+                "paragraphStyle": ps,
+                "fields": ",".join(ps.keys()),
+            }})
+        idx = end
+
+    return full_text, fmt_requests
 
 
 @app.post("/resume")
@@ -476,12 +326,18 @@ async def create_resume(request: ResumeRequest):
     doc = docs.documents().create(body={"title": filename}).execute()
     doc_id = doc["documentId"]
 
-    # Write content via batchUpdate
-    reqs = _build_resume_requests(request)
-    if reqs:
+    # Pass 1: insert all text at once
+    full_text, fmt_requests = _build_resume_doc(request)
+    docs.documents().batchUpdate(
+        documentId=doc_id,
+        body={"requests": [{"insertText": {"location": {"index": 1}, "text": full_text}}]},
+    ).execute()
+
+    # Pass 2: apply all formatting (indices are now stable)
+    if fmt_requests:
         docs.documents().batchUpdate(
             documentId=doc_id,
-            body={"requests": reqs},
+            body={"requests": fmt_requests},
         ).execute()
 
     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
