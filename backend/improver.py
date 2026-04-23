@@ -50,7 +50,7 @@ Guidelines:
 Return ONLY the JSON object, no markdown fences, no commentary."""
 
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model="claude-opus-4-7",
         max_tokens=4096,
         thinking={"type": "adaptive"},
         messages=[{"role": "user", "content": prompt}],

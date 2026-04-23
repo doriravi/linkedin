@@ -1,0 +1,72 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\User\\\\claude_projects\\\\linkedin\")",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(python -c \"import fastapi, uvicorn, anthropic, dotenv\")",
+      "Bash(pip install:*)",
+      "Bash(python -m playwright install chromium)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(python -c \"from backend.scraper import scrape_profile; print\\(''OK''\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8000\")",
+      "Bash(taskkill /PID 45580 /F)",
+      "Bash(cmd /c \"taskkill /PID 45580 /F\")",
+      "Bash(cmd /c \"netstat -ano | findstr :8000 | findstr LISTENING\")",
+      "Bash(python -m uvicorn backend.main:app --port 8000)",
+      "Bash(cmd /c \"for /f \"\"tokens=5\"\" %a in \\(''netstat -ano ^| findstr :8000 ^| findstr LISTENING''\\) do taskkill /PID %a /F\")",
+      "Bash(cmd /c \"netstat -ano | findstr \"\":8000 \"\" | findstr LISTENING\")",
+      "Bash(cmd /c \"netstat -ano | findstr :8000\")",
+      "Bash(curl -s -X POST http://localhost:8000/analyze -H \"Content-Type: application/json\" -d \"{\"\"url\"\": \"\"https://www.linkedin.com/in/rita-kagan-4197379\"\"}\")",
+      "Bash(cmd /c \"netstat -ano\")",
+      "Bash(cmd /c \"wmic process where \"\"name=''python.exe''\"\" get processid,commandline 2>&1\")",
+      "Bash(cmd /c \"tasklist | findstr python\")",
+      "Bash(python -c \":*)",
+      "Bash(cmd /c \"for /f \"\"tokens=5\"\" %a in \\(''netstat -ano ^| findstr \"\":8000\"\"''\\) do @echo PID=%a && taskkill /PID %a /F 2>nul\")",
+      "Bash(python -m uvicorn backend.main:app --port 8001)",
+      "Bash(curl -s http://localhost:8001/health)",
+      "Bash(curl -s -X POST http://localhost:8001/analyze -H \"Content-Type: application/json\" -d \"{\"\"url\"\": \"\"https://www.linkedin.com/in/rita-kagan-4197379\"\"}\")",
+      "Bash(python -c ':*)",
+      "Bash(cmd.exe /c \"type c:\\\\Users\\\\User\\\\claude_projects\\\\linkedin\\\\server.log\")",
+      "Bash(cmd.exe /c \"type c:\\\\Users\\\\User\\\\claude_projects\\\\linkedin\\\\uvicorn.log\")",
+      "WebSearch"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/stop\" || echo '{}'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "_voice-hooks__speak$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/pre-speak\" || echo '{}'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(?!.*_voice-hooks__)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST \"http://localhost:${MCP_VOICE_HOOKS_PORT:-5111}/api/hooks/post-tool\" || echo '{}'"
+          }
+        ]
+      }
+    ]
+  }
+}
